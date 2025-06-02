@@ -19,13 +19,14 @@ export const register = async (req, res) => {
         }       
         const user= await User.create({ email, password });
         const token = generateToken(user._id);
-        res.status(201).json({
-            message: "User registered successfully",    
-        });
+        
         res.cookie('token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
+        res.status(201).json({
+            message: "User registered successfully",    
         });
     } catch (error) {
         console.error("Registration error:", error);
@@ -40,9 +41,17 @@ export const login = async (req, res) => {
     if(!user|| !isPasswordValid) {
         return res.status(401).json({ message: "Invalid email or password" });
     }
-    res.status(200).json({
+    const token=generateToken(user._id)
+    const options={ 
+         httpOnly: true,
+         secure: true,
+         sameSite: "None" // 7 days
+       }
+    res.status(200)
+    .cookie('token',token,options)
+    .json({
         message: "Login successful",
-        token: generateToken(user._id)
+        token: token
     });
 }
 
