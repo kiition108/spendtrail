@@ -5,7 +5,6 @@ import crypto from 'crypto';
 
 export const handleSmsWebhook = async (req, res) => {
   const { message, sender, receivedAt, lat, lng } = req.body;
-
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: 'Unauthorized: user context missing' });

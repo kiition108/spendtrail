@@ -12,9 +12,9 @@ export async function reverseGeocode(lat, lng) {
 
     return {
       address: data.display_name,
-      city: data.address.city || data.address.town || data.address.village || '',
-      country: data.address.country || '',
-      placeName: data.name || '',
+      city: data.address?.city || data.address?.town || data.address?.village || '',
+      country: data.address?.country || '',
+      placeName: data.name ||data.address?.attraction ||  '',
     };
   } catch (error) {
     console.error('Reverse geocoding failed:', error);

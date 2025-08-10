@@ -1,30 +1,48 @@
 import {Transaction} from '../models/Transaction.model.js';
+import { reverseGeocode } from '../utils/geocode.js';
 import { logInfo, logError, logWarn } from '../utils/logService.js';
-
+import moment from 'moment-timezone'
 
 
 
 
 export const addTransaction = async (req, res) => {
-    const {amount,currency, category,subCategory,merchant, note,paymentMethod,tags, location,source, timestamp } = req.body;
-    const userId = req.user._id; // Assuming user ID is available in req.user
+    const {amount,currency,category,subCategory,merchant,note,paymentMethod,tags=[],location,source="manual", timestamp } = req.body;
+    const user = req.user._id; // Assuming user ID is available in req.user
     if (!amount || !category || !location) {
         logWarn("required field missing",req);
         return res.status(400).json({ message: 'Amount, location and category are required' });
     }
+    let locationData = {
+      lat:location?.lat,
+      lng:location?.lng,
+      address:location?.address,
+      city:location?.city,
+      country:location?.country,
+      placeName:location?.placeName,
+    };
+
+    // 🧠 If address info missing but lat/lng exist — reverse geocode
+    if ((!location?.address || !location?.city || !location?.country) && location?.lat && location?.lng) {
+      const geo = await reverseGeocode(location?.lat, location?.lng);
+      locationData = {
+        ...locationData,
+        ...geo,
+      };
+    }
     try {
         const transaction = await Transaction.create({
-      userId,
+      user,
       amount,
       currency,
       category,
-      subCategory,
+      subCategory:subCategory||'',
       merchant,
       note,
       paymentMethod,
       tags,
-      location,
-      timestamp,
+      location:locationData,
+      timestamp:timestamp||new Date(),
       source,
     });
     logInfo('Transaction created', req, { transactionId: transaction._id });
@@ -33,7 +51,7 @@ export const addTransaction = async (req, res) => {
             transaction
         });
     } catch (error) {
-        logError('Failed to create transaction', err, req);
+        logError('Failed to create transaction', error, req);
         res.status(500).json({
             message: 'Error creating transaction'
         });
@@ -41,9 +59,9 @@ export const addTransaction = async (req, res) => {
 }
 
 export const getTransactionByUser = async (req, res) => {
-    const userId = req.user._id; // Assuming user ID is available in req.user
+    const user = req.user._id; // Assuming user ID is available in req.user
     try {
-        const transactions = await Transaction.find({ userId }).sort({ timestamp: -1 });
+        const transactions = await Transaction.find({ user }).sort({ timestamp: -1 });
         res.status(200).json({
             message: 'Transactions retrieved successfully',
             transactions
@@ -57,9 +75,9 @@ export const getTransactionByUser = async (req, res) => {
 }
 export const getTransactionById = async (req, res) => {
     const { id } = req.params;
-    const userId = req.user._id; // Assuming user ID is available in req.user
+    const user = req.user._id; // Assuming user ID is available in req.user
     try {
-        const transaction = await Transaction.findOne({ _id: id, userId });
+        const transaction = await Transaction.findOne({ _id: id, user });
         if (!transaction) {
             return res.status(404).json({ message: 'Transaction not found' });
         }
@@ -75,11 +93,11 @@ export const getTransactionById = async (req, res) => {
 }
 
 export const importTransactions = async (req, res) => {
-    const userId=req.user.id
+    const user=req.user.id
   try {
     const transactions = req.body.map(tx => ({
       ...tx,
-      userId,
+      user,
     }));
 
     const result = await Transaction.insertMany(transactions);
@@ -95,10 +113,10 @@ export const updateTransaction = async (req, res) => {
   try {
     const id = req.params.id;
     const update = req.body;
-    const userId= req.user.id;
+    const user= req.user.id;
 
     const transaction = await Transaction.findOneAndUpdate(
-      { _id: id, userId },
+      { _id: id, user },
       update,
       { new: true }
     );
@@ -114,11 +132,11 @@ export const updateTransaction = async (req, res) => {
 export const deleteTransaction = async (req, res) => {
   try {
     const id = req.params.id;
-    const userId=req.user.id
+    const user=req.user.id
 
     const deleted = await Transaction.findOneAndDelete({
       _id: id,
-      userId
+      user
     });
 
     if (!deleted) return res.status(404).json({ error: 'Transaction not found' });
@@ -133,7 +151,7 @@ export const getTransactionsBySearch = async (req, res) => {
   try {
     const { start, end, category, tags, source, q } = req.query;
 
-    const filter = { userId: req.user.id };
+    const filter = { user: req.user.id };
 
     if (start || end) {
       filter.timestamp = {};
@@ -157,3 +175,71 @@ export const getTransactionsBySearch = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch transactions' });
   }
 };
+
+export const dayWeeklyTransactionSumm= async(req,res)=>{
+  try{
+  const user = req.user._id;
+  const startOfToday = moment().tz('Asia/Kolkata').startOf('day').toDate();
+  const startOfWeek = moment().tz('Asia/Kolkata').startOf('isoWeek').toDate();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const sixMonthsAgo = moment().subtract(6, 'months').startOf('day').toDate();
+  const now = new Date();
+
+  if (startOfWeek < sixMonthsAgo) {
+  return res.status(403).json({ message: 'Data older than 6 months requires premium access.' });
+}
+
+// Fetch today's transactions
+const todayTransactions = await Transaction.find({
+  user,
+  timestamp: { $gte: startOfToday, $lte: now }
+}).select('amount timestamp');
+
+// Weekly aggregation grouped by day
+const weekAggregation = await Transaction.aggregate([
+  {
+    $match: {
+      user,
+      timestamp: { $gte: startOfWeek, $lte: now }
+    }
+  },
+  {
+    $group: {
+      _id: { $dayOfWeek: "$timestamp" }, // 1 (Sun) - 7 (Sat)
+      total: { $sum: "$amount" },
+      count: { $sum: 1 }
+    }
+  },
+  { $sort: { _id: 1 } }
+]);
+
+// Total calculations
+const totalToday = todayTransactions.reduce((acc, txn) => acc + txn.amount, 0);
+const totalThisWeek = weekAggregation.reduce((acc, t) => acc + t.total, 0);
+
+// Response
+res.json({
+  today: {
+    total: totalToday,
+    count: todayTransactions.length,
+    chart: todayTransactions.map(txn => ({
+      time: txn.timestamp,
+      amount: txn.amount
+    }))
+  },
+  week: {
+    total: totalThisWeek,
+    count: weekAggregation.reduce((acc, t) => acc + t.count, 0),
+    chart: weekAggregation.map(t => ({
+      day: dayNames[(t._id - 1) % 7], // 1=Sun, so offset by -1 for array index
+      amount: t.total
+    }))
+  }
+});
+}
+catch(err){
+  console.log(err);
+}
+
+}
