@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 
 const transactionSchema = new mongoose.Schema({
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    amount: { type: Number, required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  amount: { type: Number, required: true },
   currency: { type: String, default: 'INR' },
 
   category: { type: String, required: true },       // e.g. "Food"
@@ -26,11 +26,13 @@ const transactionSchema = new mongoose.Schema({
   },
 
   timestamp: { type: Date, default: Date.now },
+  messageHash: { type: String },
 }, {
   timestamps: true,
 });
 
-transactionSchema.index({ userId: 1, timestamp: -1 }); // Fast recent lookups
+transactionSchema.index({ user: 1, messageHash: 1 }); // Deduplication scope
+transactionSchema.index({ user: 1, timestamp: -1 }); // Fast recent lookups
 transactionSchema.index({ note: 'text', merchant: 'text' }); // Text search
 
 export const Transaction = mongoose.model('Transaction', transactionSchema);
