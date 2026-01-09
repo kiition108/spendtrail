@@ -1,15 +1,19 @@
-import express from 'express';      
-import { register, login, logout, getCurrentUser } from '../controllers/auth.controller.js';
-import {auth} from '../middleware/authMiddleware.js';
+import express from 'express';
+import { register, login, logout, getCurrentUser, verifyOtp, resendOtp } from '../controllers/auth.controller.js';
+import { auth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 // Register route
 router.post('/register', register);
+// OTP Verification route
+router.post('/verify-otp', verifyOtp);
+// Resend OTP route
+router.post('/resend-otp', resendOtp);
 // Login route  
 router.post('/login', login);
 // Logout route
-router.post('/logout',auth, logout);
+router.post('/logout', auth, logout);
 //getCurrentUser
-router.get('/me',auth,getCurrentUser)
+router.get('/me', auth, getCurrentUser)
 export default router;
 // Export the router to be used in the main app file
