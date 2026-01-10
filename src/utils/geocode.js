@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import logger from './logger.js';
 
 export async function reverseGeocode(lat, lng) {
   try {
@@ -17,7 +18,7 @@ export async function reverseGeocode(lat, lng) {
       placeName: data.name || data.address?.attraction || '',
     };
   } catch (error) {
-    console.error('Reverse geocoding failed:', error);
+    logger.error('Reverse geocoding failed:', { error: error.message });
     return null;
   }
 }

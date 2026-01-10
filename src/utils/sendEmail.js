@@ -1,30 +1,31 @@
-import nodemailer from 'nodemailer';
+import logger from './logger.js';
+import { Resend } from 'resend';
 
-const sendEmail = async (email, subject, text) => {
+const sendEmail = async (email, subject, text, html) => {
     try {
-        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-            console.error("FATAL ERROR: EMAIL_USER or EMAIL_PASS environment variables are not set.");
+        if (!process.env.RESEND_API_KEY) {
+            logger.error("FATAL ERROR: RESEND_API_KEY is not set.");
             throw new Error("Missing email configuration");
         }
 
-        const transporter = nodemailer.createTransport({
-            service: 'gmail', // or your preferred service
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-            },
-        });
+        const resend = new Resend(process.env.RESEND_API_KEY);
 
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
+        const { data, error } = await resend.emails.send({
+            from: 'SpendTrail Support <support@spendtrail.app>', // Better trust than noreply
             to: email,
             subject: subject,
-            text: text,
+            text: text, // Plain text fallback
+            html: html || `<p>${text}</p>` // Use provided HTML or wrap text
         });
 
-        console.log(`Email sent successfully to ${email}`);
+        if (error) {
+            logger.error('Resend API Error:', { error });
+            throw error;
+        }
+
+        logger.info(`Email sent successfully via Resend`, { email, id: data.id });
     } catch (error) {
-        console.error('Error sending email:', error);
+        logger.error('Error sending email:', { error: error.message });
         throw new Error('Email verification failed');
     }
 };
