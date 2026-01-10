@@ -26,11 +26,11 @@ Sentry.init({
 import connectDB from './db/index.js';
 import mongoose from 'mongoose';
 import { app } from './app.js';
+import logger from './utils/logger.js';
 
 // Handle uncaught exceptions (synchronous errors)
 process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
+    logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', { error: err.name, message: err.message });
     process.exit(1);
 });
 
@@ -41,22 +41,23 @@ import { emailPoller } from './services/emailPoller.js';
 connectDB()
     .then(() => {
         server = app.listen(process.env.PORT || 8000, '0.0.0.0', () => {
-            console.log(`Server is running on port :http://localhost:${process.env.PORT}`);
-            console.log(`Environment: ${process.env.NODE_ENV}`);
+            logger.info('Server started successfully', { 
+                port: process.env.PORT || 8000, 
+                environment: process.env.NODE_ENV 
+            });
 
             // Start Email Poller
             emailPoller.start();
         });
     })
     .catch((error) => {
-        console.error("Failed to connect to the database:", error);
+        logger.error('Failed to connect to the database', { error: error.message, stack: error.stack });
         process.exit(1);
     })
 
 // Handle unhandled rejections (asynchronous errors)
 process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
+    logger.error('UNHANDLED REJECTION! 💥 Shutting down...', { error: err.name, message: err.message });
     if (server) {
         server.close(() => {
             process.exit(1);
