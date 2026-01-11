@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Google OAuth configuration
 const getGoogleOAuth2Client = () => {
-    const redirectUri = `${process.env.BACKEND_URL || 'http://192.168.31.2:8000'}/api/v1/auth/google/callback`;
+    const redirectUri = `${process.env.BACKEND_URL || 'https://spendtrail.onrender.com'}/api/v1/auth/google/callback`;
     
     return new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,

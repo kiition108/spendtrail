@@ -9,10 +9,12 @@ const router = express.Router();
 
 // Gmail OAuth configuration
 const getOAuth2Client = () => {
+    const redirectUri = `${process.env.BACKEND_URL || 'https://spendtrail.onrender.com'}/api/v1/settings/gmail/callback`;
+    
     return new google.auth.OAuth2(
         process.env.GMAIL_CLIENT_ID,
         process.env.GMAIL_CLIENT_SECRET,
-        `${process.env.CORS_ORIGIN || 'http://localhost:8000'}/api/v1/settings/gmail/callback`
+        redirectUri
     );
 };
 
