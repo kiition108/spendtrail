@@ -37,6 +37,7 @@ process.on('uncaughtException', (err) => {
 let server;
 
 import { emailPoller } from './services/emailPoller.js';
+import { multiUserGmailPoller } from './services/multiUserGmailPoller.js';
 
 connectDB()
     .then(() => {
@@ -46,8 +47,17 @@ connectDB()
                 environment: process.env.NODE_ENV 
             });
 
-            // Start Email Poller
+            // Start Email Pollers
+            // Testmail poller for SMS-to-email transactions
             emailPoller.start();
+            
+            // Start Multi-User Gmail Poller (processes all users with enabled integration)
+            if (process.env.GMAIL_ENABLED !== 'false') {
+                multiUserGmailPoller.start();
+                logger.info('Multi-user Gmail poller started');
+            } else {
+                logger.info('Gmail integration is disabled');
+            }
         });
     })
     .catch((error) => {

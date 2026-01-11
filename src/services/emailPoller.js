@@ -46,8 +46,12 @@ export class EmailPollerService {
                     await new Promise(resolve => setTimeout(resolve, 10000));
                 }
             } catch (error) {
-                logger.error('Email Poller Error', { error: error.message });
-                Sentry.captureException(error, { tags: { service: 'email_poller' } });
+                logger.error('Email Poller Error - Testmail API fetch failed', { 
+                    error: error.message,
+                    code: error.code,
+                    cause: error.cause?.message
+                });
+                Sentry.captureException(error, { tags: { service: 'email_poller', api: 'testmail' } });
                 // Wait before retrying on crash
                 await new Promise(resolve => setTimeout(resolve, 60000));
             }

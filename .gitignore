@@ -8,6 +8,14 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
+# Testing and Setup Files
+test*.js
+*test*.js
+gmailSetup.js
+gmail-tokens.json
+*.md
+!README.md
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
@@ -77,6 +85,8 @@ web_modules/
 .env
 .env.*
 
+# Gmail API tokens
+gmail-tokens.json
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
