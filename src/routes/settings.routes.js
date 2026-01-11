@@ -22,6 +22,8 @@ const getOAuth2Client = () => {
  * GET /settings/gmail/enable
  * Get Gmail authorization URL for current user
  * Requires: Authentication middleware (req.user)
+ * Query params:
+ *   - mobile_redirect: Optional app redirect URL for mobile (e.g., exp://...)
  */
 router.get('/gmail/enable', auth, async (req, res) => {
     try {
@@ -32,14 +34,15 @@ router.get('/gmail/enable', auth, async (req, res) => {
             });
         }
 
+        const { mobile_redirect } = req.query;
         const oauth2Client = getOAuth2Client();
         const state = crypto.randomBytes(32).toString('hex');
         
-        // Store state in session or temp storage (implement as needed)
-        // For now, encode userId in state
+        // Encode userId and mobile redirect in state
         const stateData = Buffer.from(JSON.stringify({
             userId: req.user.id,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            mobile_redirect: mobile_redirect || null
         })).toString('base64');
 
         const SCOPES = ['https://www.googleapis.com/auth/gmail.modify'];
@@ -67,6 +70,9 @@ router.get('/gmail/enable', auth, async (req, res) => {
 /**
  * GET /settings/gmail/callback
  * OAuth callback - exchanges code for tokens and saves to user
+ * Handles both web and mobile flows:
+ * - Web: Exchanges code for tokens and shows HTML page
+ * - Mobile: Redirects to app with code parameter for client-side exchange
  */
 router.get('/gmail/callback', async (req, res) => {
     const { code, state } = req.query;
@@ -76,10 +82,20 @@ router.get('/gmail/callback', async (req, res) => {
     }
 
     try {
-        // Decode state to get userId
+        // Decode state to get userId and mobile redirect
         const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
         const userId = stateData.userId;
+        const mobileRedirect = stateData.mobile_redirect;
 
+        // If mobile redirect URL provided, redirect back to app with code
+        if (mobileRedirect) {
+            const redirectUrl = new URL(mobileRedirect);
+            redirectUrl.searchParams.set('code', code);
+            redirectUrl.searchParams.set('userId', userId);
+            return res.redirect(redirectUrl.toString());
+        }
+
+        // Otherwise, handle as web flow (exchange code for token and show HTML)
         const oauth2Client = getOAuth2Client();
         const { tokens } = await oauth2Client.getToken(code);
         
@@ -124,6 +140,60 @@ router.get('/gmail/callback', async (req, res) => {
                 </body>
             </html>
         `);
+    }
+});
+
+/**
+ * POST /settings/gmail/mobile
+ * Mobile-friendly endpoint that accepts code and userId to complete Gmail OAuth
+ */
+router.post('/gmail/mobile', async (req, res) => {
+    const { code, userId } = req.body;
+    
+    if (!code || !userId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Authorization code and userId required'
+        });
+    }
+
+    try {
+        const oauth2Client = getOAuth2Client();
+        const { tokens } = await oauth2Client.getToken(code);
+        
+        // Get user's Gmail email
+        oauth2Client.setCredentials(tokens);
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        const profile = await gmail.users.getProfile({ userId: 'me' });
+        const authorizedEmail = profile.data.emailAddress;
+
+        // Save tokens to user
+        await User.findByIdAndUpdate(userId, {
+            'gmailIntegration.enabled': true,
+            'gmailIntegration.authorizedEmail': authorizedEmail,
+            'gmailIntegration.tokens': {
+                access_token: tokens.access_token,
+                refresh_token: tokens.refresh_token,
+                expiry_date: tokens.expiry_date
+            },
+            'gmailIntegration.lastSync': new Date()
+        });
+
+        logger.info(`Gmail integration enabled for user ${userId}, email: ${authorizedEmail}`);
+
+        res.json({
+            success: true,
+            enabled: true,
+            authorizedEmail,
+            message: 'Gmail integration enabled successfully'
+        });
+    } catch (error) {
+        logger.error('Gmail OAuth mobile error', { error: error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Gmail authorization failed',
+            error: error.message
+        });
     }
 });
 
