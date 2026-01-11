@@ -20,9 +20,12 @@ const getGoogleOAuth2Client = () => {
 /**
  * GET /auth/google
  * Get Google OAuth authorization URL
+ * Query params:
+ *   - mobile_redirect: Optional app redirect URL for mobile (e.g., exp://...)
  */
 router.get('/google', (req, res) => {
     try {
+        const { mobile_redirect } = req.query;
         const oauth2Client = getGoogleOAuth2Client();
         
         const SCOPES = [
@@ -30,11 +33,20 @@ router.get('/google', (req, res) => {
             'https://www.googleapis.com/auth/userinfo.email'
         ];
 
-        const authUrl = oauth2Client.generateAuthUrl({
+        const authParams = {
             access_type: 'offline',
             scope: SCOPES,
             prompt: 'select_account'
-        });
+        };
+
+        // If mobile redirect URL provided, encode it in state parameter
+        if (mobile_redirect) {
+            authParams.state = Buffer.from(JSON.stringify({ 
+                mobile_redirect 
+            })).toString('base64');
+        }
+
+        const authUrl = oauth2Client.generateAuthUrl(authParams);
 
         res.json({ 
             success: true, 
@@ -53,15 +65,37 @@ router.get('/google', (req, res) => {
 /**
  * GET /auth/google/callback
  * Google OAuth callback - creates/logs in user
+ * Handles both web and mobile flows:
+ * - Web: Returns HTML page with token
+ * - Mobile: Redirects to exp:// URL with code parameter
  */
 router.get('/google/callback', async (req, res) => {
-    const { code } = req.query;
+    const { code, state } = req.query;
     
     if (!code) {
         return res.status(400).send('Authorization code missing');
     }
 
     try {
+        // Check if this is a mobile request (state contains mobile_redirect)
+        let mobileRedirect = null;
+        if (state) {
+            try {
+                const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+                mobileRedirect = decoded.mobile_redirect;
+            } catch (e) {
+                // Invalid state, treat as web
+            }
+        }
+
+        // If mobile redirect URL provided, redirect back to app with code
+        if (mobileRedirect) {
+            const redirectUrl = new URL(mobileRedirect);
+            redirectUrl.searchParams.set('code', code);
+            return res.redirect(redirectUrl.toString());
+        }
+
+        // Otherwise, handle as web flow (exchange code for token and show HTML)
         const oauth2Client = getGoogleOAuth2Client();
         const { tokens } = await oauth2Client.getToken(code);
         
