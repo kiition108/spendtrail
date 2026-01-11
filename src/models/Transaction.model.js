@@ -12,7 +12,7 @@ const transactionSchema = new mongoose.Schema({
   note: { type: String },
 
   paymentMethod: { type: String, enum: ['cash', 'card', 'upi', 'wallet', 'other'], default: 'other' },
-  source: { type: String, enum: ['manual', 'sms', 'email', 'imported'], default: 'manual' },
+  source: { type: String, enum: ['manual', 'sms', 'email', 'gmail', 'imported'], default: 'manual' },
 
   tags: [{ type: String }],
 

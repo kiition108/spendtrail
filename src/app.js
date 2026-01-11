@@ -12,6 +12,12 @@ import authRoutes from './routes/auth.route.js';
 import transactionRoutes from './routes/transaction.route.js';
 import logger from './utils/logger.js';
 import webhookRoutes from './routes/webhook.routes.js';
+import gmailRoutes from './routes/gmail.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
+import googleAuthRoutes from './routes/googleAuth.routes.js';
+import pendingTransactionRoutes from './routes/pendingTransaction.routes.js';
+import deviceRoutes from './routes/device.routes.js';
+import profileRoutes from './routes/profile.routes.js';
 
 
 
@@ -185,7 +191,13 @@ if (process.env.NODE_ENV !== 'production') {
 // Routes
 app.use('/api/v1/smswebhook', webhookRoutes);
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', googleAuthRoutes);  // Google OAuth routes
 app.use('/api/v1/transactions', transactionRoutes);
+app.use('/api/v1/gmail', gmailRoutes);
+app.use('/api/v1/settings', settingsRoutes);  // User settings routes
+app.use('/api/v1/pending-transactions', pendingTransactionRoutes);  // Pending transactions
+app.use('/api/v1/device', deviceRoutes);  // Device token registration
+app.use('/api/v1/profile', profileRoutes);  // Profile management
 
 
 

@@ -15,13 +15,23 @@ export class EmailPollerService {
     constructor() {
         this.isPolling = false;
         this.pollInterval = 10000; // 10 seconds fallback, though Live Query handles wait
+        this.processedEmailIds = new Set(); // Track processed emails
     }
 
     start() {
-        if (this.isPolling) return;
+        if (this.isPolling) {
+            logger.warn('📧 Email Poller already running');
+            return;
+        }
         this.isPolling = true;
         this.pollLoop();
         logger.info('📧 Email Poller Service Started');
+    }
+
+    stop() {
+        this.isPolling = false;
+        this.processedEmailIds.clear();
+        logger.info('📧 Email Poller Service Stopped');
     }
 
     async pollLoop() {
@@ -36,8 +46,12 @@ export class EmailPollerService {
                     await new Promise(resolve => setTimeout(resolve, 10000));
                 }
             } catch (error) {
-                logger.error('Email Poller Error', { error: error.message });
-                Sentry.captureException(error, { tags: { service: 'email_poller' } });
+                logger.error('Email Poller Error - Testmail API fetch failed', { 
+                    error: error.message,
+                    code: error.code,
+                    cause: error.cause?.message
+                });
+                Sentry.captureException(error, { tags: { service: 'email_poller', api: 'testmail' } });
                 // Wait before retrying on crash
                 await new Promise(resolve => setTimeout(resolve, 60000));
             }
@@ -58,9 +72,25 @@ export class EmailPollerService {
 
             if (data.result === 'success') {
                 if (data.emails && data.emails.length > 0) {
-                    logger.info(`📧 Received ${data.emails.length} new emails`);
-                    for (const email of data.emails) {
-                        await this.processEmail(email);
+                    // Filter out already processed emails
+                    const newEmails = data.emails.filter(email => {
+                        const emailId = email.tag + email.timestamp; // Unique identifier
+                        return !this.processedEmailIds.has(emailId);
+                    });
+
+                    if (newEmails.length > 0) {
+                        logger.info(`📧 Received ${newEmails.length} new emails (${data.emails.length - newEmails.length} already processed)`);
+                        for (const email of newEmails) {
+                            const emailId = email.tag + email.timestamp;
+                            await this.processEmail(email);
+                            this.processedEmailIds.add(emailId);
+                            
+                            // Prevent memory leak - keep only last 1000 email IDs
+                            if (this.processedEmailIds.size > 1000) {
+                                const firstItem = this.processedEmailIds.values().next().value;
+                                this.processedEmailIds.delete(firstItem);
+                            }
+                        }
                     }
                 }
                 return false; // Success, continue polling
