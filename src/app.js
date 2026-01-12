@@ -21,6 +21,8 @@ import profileRoutes from './routes/profile.routes.js';
 import merchantLocationRoutes from './routes/merchantLocation.routes.js';
 import suggestionsRoutes from './routes/suggestions.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
+import logsRoutes from './routes/logs.routes.js';
+import { requestLogger, errorLogger } from './middlewares/requestLogger.middleware.js';
 
 
 
@@ -195,6 +197,9 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Request logging middleware (adds correlation IDs and timing)
+app.use(requestLogger);
+
 // Routes
 app.use('/api/v1/smswebhook', webhookRoutes);
 app.use('/api/v1/auth', authRoutes);
@@ -208,8 +213,10 @@ app.use('/api/v1/profile', profileRoutes);  // Profile management
 app.use('/api/v1/merchant-locations', merchantLocationRoutes);  // Learned merchant locations
 app.use('/api/v1/suggestions', suggestionsRoutes);  // AI suggestions from learned patterns
 app.use('/api/v1/insights', insightsRoutes);  // Spending insights and analytics
+app.use('/api/v1/logs', logsRoutes);  // Log viewer API
 
-
+// Error logging middleware (captures errors with request context)
+app.use(errorLogger);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

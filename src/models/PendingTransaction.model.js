@@ -27,10 +27,20 @@ const pendingTransactionSchema = new mongoose.Schema({
 
     // Source information
     source: {
-        type: { type: String, enum: ['gmail', 'sms', 'manual'], required: true },
-        emailId: String, // Gmail message ID
+        type: { type: String, enum: ['gmail', 'email', 'sms', 'manual'], required: true },
+        emailId: String, // Gmail message ID or email hash
         rawContent: String, // Original email/SMS content
-        subject: String // Email subject
+        subject: String, // Email subject
+        from: String, // Email sender
+        parsingStrategy: String // Which parser was used: 'bank-pattern', 'generic-parser', 'learned-pattern', 'testmail_forwarded', 'failed'
+    },
+
+    // Additional metadata for learning
+    metadata: {
+        parsingError: String, // Error message if parsing failed
+        needsManualReview: Boolean, // Flag for admin review
+        bankName: String, // Detected bank name
+        originalHTML: String // Original HTML content (first 1000 chars)
     },
 
     // Confidence score from parser (0-1)
@@ -99,9 +109,65 @@ pendingTransactionSchema.virtual('formattedAmount').get(function() {
 pendingTransactionSchema.methods.approve = async function(correctedData = null) {
     const Transaction = mongoose.model('Transaction');
     const MerchantLocation = mongoose.model('MerchantLocation');
+    const EmailParsingPattern = mongoose.model('EmailParsingPattern');
     
     // Use corrected data if provided, otherwise use parsed data
     const transactionData = correctedData || this.parsedData;
+    
+    // If user corrected the data, learn from it
+    if (correctedData && this.source.type === 'gmail' && this.source.from) {
+        try {
+            const senderDomain = this.source.from.match(/@([a-z0-9.-]+\.[a-z]{2,})$/i)?.[1]?.toLowerCase();
+            
+            await EmailParsingPattern.create({
+                user: this.user,
+                sender: this.source.from.toLowerCase(),
+                senderDomain: senderDomain,
+                originalParsed: {
+                    amount: this.parsedData.amount,
+                    type: this.parsedData.type,
+                    merchant: this.parsedData.merchant,
+                    category: this.parsedData.category,
+                    paymentMethod: this.parsedData.paymentMethod
+                },
+                correctedData: {
+                    amount: correctedData.amount,
+                    type: correctedData.type,
+                    merchant: correctedData.merchant,
+                    category: correctedData.category,
+                    paymentMethod: correctedData.paymentMethod
+                },
+                rawEmail: {
+                    subject: this.source.subject,
+                    body: this.source.rawContent?.substring(0, 500)
+                },
+                confidence: 0.7, // Start with medium confidence
+                timesApplied: 0,
+                successRate: 0
+            });
+            
+            logger.info(`📚 Created learning pattern from user correction`, {
+                sender: this.source.from,
+                originalMerchant: this.parsedData.merchant,
+                correctedMerchant: correctedData.merchant
+            });
+            
+            // Check if this pattern should be promoted to global
+            try {
+                const promoted = await EmailParsingPattern.promoteToGlobal(senderDomain, this.source.from);
+                if (promoted) {
+                    logger.info(`🌐 Pattern promoted to global`, {
+                        sender: this.source.from,
+                        senderDomain: senderDomain
+                    });
+                }
+            } catch (promoteErr) {
+                logger.error('Error checking pattern promotion', { error: promoteErr.message });
+            }
+        } catch (err) {
+            logger.error('Error creating learning pattern', { error: err.message });
+        }
+    }
     
     // Create actual transaction
     const transaction = await Transaction.create({

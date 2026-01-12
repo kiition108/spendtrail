@@ -9,12 +9,12 @@ export const parseTransactionMessage = (message) => {
     if (!message) return null;
 
     // 1. Amount Parsing
-    // Matches: Rs. 100, INR 100, ₹100, 100.00 Rs, etc.
-    const amountMatch = message.match(/(?:Rs\.?|INR\.?|₹)[\s]*([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)[\s]*(?:Rs|INR|₹)/i);
+    // Matches: Rs. 100, Rs.70.00, INR 100, ₹100, 100.00 Rs, 510 deduction, etc.
+    const amountMatch = message.match(/(?:Rs\.?\s*|INR\.?\s*|₹\s*)([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)[\s]*(?:Rs|INR|₹)|\b([0-9,]+(?:\.[0-9]{1,2})?)[\s]+(?:deduction|debited|credited|spent|paid|withdrawn)/im);
 
     if (!amountMatch) return { error: 'Could not parse transaction amount' };
 
-    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/,/g, '');
+    const amountStr = (amountMatch[1] || amountMatch[2] || amountMatch[3]).replace(/,/g, '');
     const amount = parseFloat(amountStr);
 
     if (!amount || amount <= 0) {
@@ -56,14 +56,14 @@ export const parseTransactionMessage = (message) => {
     // 4. Transaction Type Detection & Final Amount
     const { category, subCategory } = classifyCategory(message + ' ' + merchant);
 
-    let type = 'debit';
+    let type = 'expense'; // Default to expense (was 'debit')
     let finalAmount = amount;
 
     if (/credited|received|refund|cashback/i.test(message)) {
-        type = 'credit';
+        type = 'income'; // Changed from 'credit' to 'income'
         finalAmount = -amount; // Negative for income logic
-    } else if (/debited|spent|purchased|paid|withdrawn/i.test(message)) {
-        type = 'debit';
+    } else if (/debited|spent|purchased|paid|withdrawn|deducted|deduction/i.test(message)) {
+        type = 'expense'; // Changed from 'debit' to 'expense', added 'deducted|deduction'
         finalAmount = amount;
     }
 

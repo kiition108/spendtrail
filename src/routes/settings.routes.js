@@ -45,17 +45,22 @@ router.get('/gmail/enable', auth, async (req, res) => {
             mobile_redirect: mobile_redirect || null
         })).toString('base64');
 
+        // Get user's login email to pass as hint
+        const user = await User.findById(req.user.id).select('email');
+
         const SCOPES = ['https://www.googleapis.com/auth/gmail.modify'];
         const authUrl = oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: SCOPES,
             prompt: 'consent',
-            state: stateData
+            state: stateData,
+            login_hint: user.email  // Suggest the correct Gmail account
         });
 
         res.json({ 
             success: true, 
             authUrl,
+            userEmail: user.email,  // Send to frontend for display
             message: 'Visit this URL to authorize Gmail access for transaction emails'
         });
     } catch (error) {
@@ -105,6 +110,35 @@ router.get('/gmail/callback', async (req, res) => {
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const authorizedEmail = profile.data.emailAddress;
 
+        // Get user to validate email match
+        const user = await User.findById(userId).select('email');
+        if (!user) {
+            return res.status(404).send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>❌ User Not Found</h2>
+                        <p>Please try again from the app settings.</p>
+                    </body>
+                </html>
+            `);
+        }
+
+        // Validate: Gmail email must match login email
+        if (authorizedEmail.toLowerCase() !== user.email.toLowerCase()) {
+            logger.warn(`Gmail email mismatch for user ${userId}: login=${user.email}, gmail=${authorizedEmail}`);
+            return res.status(400).send(`
+                <html>
+                    <body style="font-family: Arial; text-align: center; padding: 50px;">
+                        <h2>❌ Gmail Account Mismatch</h2>
+                        <p>You logged into SpendTrail with: <strong>${user.email}</strong></p>
+                        <p>But tried to connect Gmail account: <strong>${authorizedEmail}</strong></p>
+                        <p>Please connect the Gmail account that matches your login email.</p>
+                        <p>You can close this window and try again.</p>
+                    </body>
+                </html>
+            `);
+        }
+
         // Save tokens to user
         await User.findByIdAndUpdate(userId, {
             'gmailIntegration.enabled': true,
@@ -150,6 +184,8 @@ router.get('/gmail/callback', async (req, res) => {
 router.post('/gmail/mobile', async (req, res) => {
     const { code, userId } = req.body;
     
+    logger.info(`📧 Gmail mobile OAuth request received for userId: ${userId}`);
+    
     if (!code || !userId) {
         return res.status(400).json({
             success: false,
@@ -158,6 +194,16 @@ router.post('/gmail/mobile', async (req, res) => {
     }
 
     try {
+        // Get user to check their login email
+        const user = await User.findById(userId).select('email');
+        logger.info(`👤 User found: ${user?.email}`);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
         const oauth2Client = getOAuth2Client();
         const { tokens } = await oauth2Client.getToken(code);
         
@@ -166,6 +212,21 @@ router.post('/gmail/mobile', async (req, res) => {
         const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const authorizedEmail = profile.data.emailAddress;
+
+        logger.info(`Gmail OAuth: Checking email match - Login: ${user.email}, Gmail: ${authorizedEmail}`);
+
+        // Validate: Gmail email must match login email
+        if (authorizedEmail.toLowerCase() !== user.email.toLowerCase()) {
+            logger.warn(`Gmail email MISMATCH detected! User ${userId}: login=${user.email}, gmail=${authorizedEmail}`);
+            return res.status(400).json({
+                success: false,
+                message: `Gmail account mismatch. Please connect the Gmail account (${user.email}) you used to log in.`,
+                loginEmail: user.email,
+                attemptedEmail: authorizedEmail
+            });
+        }
+
+        logger.info(`Gmail email MATCH confirmed for user ${userId}`);
 
         // Save tokens to user
         await User.findByIdAndUpdate(userId, {

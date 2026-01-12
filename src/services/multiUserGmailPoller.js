@@ -4,6 +4,8 @@ import { User } from '../models/User.model.js';
 import { Transaction } from '../models/Transaction.model.js';
 import { PendingTransaction } from '../models/PendingTransaction.model.js';
 import { parseTransactionMessage } from '../utils/transactionParser.js';
+import { parseBankEmail } from '../utils/bankPatterns.js';
+import { EmailParsingPattern } from '../models/EmailParsingPattern.model.js';
 import { notificationService } from './notificationService.js';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';
@@ -49,18 +51,20 @@ export class MultiUserGmailPollerService {
      */
     async start() {
         if (this.isPolling) {
-            logger.warn('Gmail poller already running');
+            logger.warn('📧 Gmail poller already running');
             return;
         }
 
         const gmailEnabled = process.env.GMAIL_ENABLED === 'true';
+        logger.info(`📧 Gmail poller start requested. GMAIL_ENABLED=${process.env.GMAIL_ENABLED}, evaluated as: ${gmailEnabled}`);
+        
         if (!gmailEnabled) {
             logger.info('📧 Gmail integration is disabled via GMAIL_ENABLED flag');
             return;
         }
 
         this.isPolling = true;
-        logger.info('🚀 Starting multi-user Gmail poller...');
+        logger.info('🚀 Multi-user Gmail poller is now ACTIVE and will poll every 60 seconds');
         
         // Start polling loop
         this.poll();
@@ -105,12 +109,14 @@ export class MultiUserGmailPollerService {
                 'gmailIntegration.tokens.access_token': { $exists: true }
             }).select('_id email gmailIntegration');
 
+            logger.info(`📧 Gmail poll cycle - Found ${users.length} user(s) with Gmail enabled`);
+
             if (users.length === 0) {
                 logger.debug('No users with Gmail integration enabled');
                 return;
             }
 
-            logger.info(`📧 Processing Gmail for ${users.length} user(s)`);
+            logger.info(`📧 Processing Gmail for ${users.length} user(s): ${users.map(u => u.email).join(', ')}`);
 
             // Process each user sequentially to avoid rate limits
             for (const user of users) {
@@ -153,7 +159,8 @@ export class MultiUserGmailPollerService {
             // Build query for transaction emails
             const query = [
                 'is:unread',
-                '(from:*@*bank.* OR from:*@paytm.* OR from:*@amazonpay.* OR from:*@googlepay.* OR from:*@phonepe.*)',
+                // Temporarily removed FROM filter for testing - accepts emails from any sender
+                // '(from:*@*bank.* OR from:*@paytm.* OR from:*@amazonpay.* OR from:*@googlepay.* OR from:*@phonepe.*)',
                 '(subject:transaction OR subject:debited OR subject:credited OR subject:payment)',
                 '-category:promotions',
                 '-category:social'
@@ -270,11 +277,51 @@ export class MultiUserGmailPollerService {
 
             const messageText = `${subject}\n\n${body}`;
 
-            // Parse transaction
-            const parsed = parseTransactionMessage(messageText);
+            // Multi-strategy parsing approach
+            let parsed = null;
+            let parsingStrategy = 'unknown';
+
+            // Strategy 1: Check if we have learned patterns for this sender
+            const learnedPatterns = await EmailParsingPattern.findPattern(user._id, from, subject);
+            if (learnedPatterns && learnedPatterns.length > 0) {
+                logger.info(`📚 Found ${learnedPatterns.length} learned pattern(s) for sender ${from}`);
+                // Apply learned patterns (will use suggestions to validate/correct parsed data)
+            }
+
+            // Strategy 2: Try bank-specific patterns first
+            parsed = parseBankEmail(from, subject, body);
+            if (parsed && parsed.amount) {
+                parsingStrategy = 'bank-pattern';
+                logger.info(`🏦 Parsed using bank pattern: ${parsed.bankName}`, { amount: parsed.amount, merchant: parsed.merchant });
+            }
+
+            // Strategy 3: Fallback to generic parser
+            if (!parsed || !parsed.amount) {
+                parsed = parseTransactionMessage(messageText);
+                parsingStrategy = 'generic-parser';
+                
+                // DEBUG: Log the email content being parsed
+                logger.info(`📧 DEBUG - Parsing email for user ${user.email}:`, {
+                    subject: subject,
+                    body: body.substring(0, 200),
+                    messageId: message.id
+                });
+
+                // DEBUG: Log parsed result
+                logger.info(`📧 DEBUG - Parse result:`, { parsed, messageId: message.id });
+            }
             
             if (!parsed) {
                 logger.debug(`Could not parse transaction from email: ${subject.substring(0, 50)}`);
+                // Store failed parsing attempt for learning
+                await this.storeFailedParsing(user._id, from, subject, body, message.id);
+                return;
+            }
+            
+            if (parsed.error) {
+                logger.warn(`Parser returned error for email: ${subject}`, { error: parsed.error });
+                // Store failed parsing attempt for learning
+                await this.storeFailedParsing(user._id, from, subject, body, message.id, parsed.error);
                 return;
             }
 
@@ -282,66 +329,109 @@ export class MultiUserGmailPollerService {
             const confidenceScore = this.calculateConfidenceScore(parsed, messageText);
 
             // Create pending transaction for user approval
-            const pendingTransaction = await PendingTransaction.create({
-                user: user._id,
-                parsedData: {
+            try {
+                const pendingTransaction = await PendingTransaction.create({
+                    user: user._id,
+                    parsedData: {
+                        amount: parsed.amount,
+                        type: parsed.type,
+                        description: parsed.description || `Email from ${from}`,
+                        category: parsed.category || 'Other',
+                        merchant: parsed.merchant,
+                        date: parsed.date || date,
+                        accountNumber: parsed.accountNumber,
+                        balance: parsed.balance,
+                        paymentMethod: parsed.paymentMethod
+                    },
+                    source: {
+                        type: 'gmail',
+                        emailId: message.id,
+                        rawContent: messageText,
+                        subject: subject,
+                        from: from,
+                        parsingStrategy: parsingStrategy
+                    },
+                    confidenceScore: confidenceScore,
+                    status: 'pending'
+                });
+
+                // Log the created object
+                logger.info(`📝 Transaction object created`, {
+                    _id: pendingTransaction._id,
+                    _idType: typeof pendingTransaction._id,
+                    isNew: pendingTransaction.isNew,
+                    userId: user._id
+                });
+
+                // Verify it was actually saved
+                const verifyTransaction = await PendingTransaction.findById(pendingTransaction._id);
+                logger.info(`🔍 Verification result`, {
+                    found: !!verifyTransaction,
+                    pendingId: pendingTransaction._id,
+                    userId: user._id
+                });
+                
+                if (!verifyTransaction) {
+                    logger.error('❌ Pending transaction was NOT saved to database!', {
+                        pendingId: pendingTransaction._id,
+                        userId: user._id
+                    });
+                    
+                    // Try to query all pending for this user
+                    const allUserPending = await PendingTransaction.find({ user: user._id });
+                    logger.error('❌ All pending transactions for user', {
+                        count: allUserPending.length,
+                        ids: allUserPending.map(t => t._id)
+                    });
+                    return;
+                }
+
+                logger.info(`📬 Created pending transaction from Gmail for user ${user.email}`, {
+                    pendingId: pendingTransaction._id,
                     amount: parsed.amount,
                     type: parsed.type,
-                    description: parsed.description || `Email from ${from}`,
-                    category: parsed.category || 'Other',
-                    merchant: parsed.merchant,
-                    date: parsed.date || date,
-                    accountNumber: parsed.accountNumber,
-                    balance: parsed.balance,
-                    paymentMethod: parsed.paymentMethod
-                },
-                source: {
-                    type: 'gmail',
-                    emailId: message.id,
-                    rawContent: messageText,
-                    subject: subject
-                },
-                confidenceScore: confidenceScore,
-                status: 'pending'
-            });
+                    confidence: confidenceScore,
+                    userId: user._id
+                });
 
-            logger.info(`📬 Created pending transaction from Gmail for user ${user.email}`, {
-                pendingId: pendingTransaction._id,
-                amount: parsed.amount,
-                type: parsed.type,
-                confidence: confidenceScore,
-                userId: user._id
-            });
-
-            // Send push notification if user has device tokens
-            if (user.deviceTokens && user.deviceTokens.length > 0) {
-                for (const token of user.deviceTokens) {
-                    try {
-                        await notificationService.sendPendingTransactionNotification(
-                            user._id,
-                            token,
-                            {
-                                _id: pendingTransaction._id,
-                                amount: parsed.amount,
-                                type: parsed.type,
-                                merchant: parsed.merchant,
-                                category: parsed.category
-                            }
-                        );
-                        
-                        // Mark notification as sent
-                        pendingTransaction.notificationSent = true;
-                        pendingTransaction.notificationSentAt = new Date();
-                        await pendingTransaction.save();
-                        
-                        break; // Only send to first valid token
-                    } catch (notifError) {
-                        logger.warn(`Failed to send notification to token`, { 
-                            userId: user._id, 
-                            error: notifError.message 
-                        });
+                // Send push notification if user has device tokens
+                if (user.deviceTokens && user.deviceTokens.length > 0) {
+                    for (const token of user.deviceTokens) {
+                        try {
+                            await notificationService.sendPendingTransactionNotification(
+                                user._id,
+                                token,
+                                {
+                                    _id: pendingTransaction._id,
+                                    amount: parsed.amount,
+                                    type: parsed.type,
+                                    merchant: parsed.merchant,
+                                    category: parsed.category
+                                }
+                            );
+                            
+                            // Mark notification as sent
+                            pendingTransaction.notificationSent = true;
+                            pendingTransaction.notificationSentAt = new Date();
+                            await pendingTransaction.save();
+                            
+                            break; // Only send to first valid token
+                        } catch (notifError) {
+                            logger.warn(`Failed to send notification to token`, { 
+                                userId: user._id, 
+                                error: notifError.message 
+                            });
+                        }
                     }
                 }
+            } catch (createError) {
+                logger.error('❌ Failed to create pending transaction', {
+                    error: createError.message,
+                    stack: createError.stack,
+                    userId: user._id,
+                    parsed: parsed
+                });
+                throw createError;
             }
 
         } catch (error) {
@@ -395,6 +485,47 @@ export class MultiUserGmailPollerService {
             logger.debug(`Marked message ${messageId} as read`);
         } catch (error) {
             logger.error(`Failed to mark message ${messageId} as read`, { error: error.message });
+        }
+    }
+
+    /**
+     * Store failed parsing attempt for future learning
+     */
+    async storeFailedParsing(userId, from, subject, body, messageId, error = 'Unknown error') {
+        try {
+            // Store as a pending transaction with very low confidence
+            // This allows admin/user to manually parse and teach the system
+            await PendingTransaction.create({
+                user: userId,
+                parsedData: {
+                    amount: 0, // Placeholder
+                    type: 'expense', // Default
+                    description: `Failed to parse: ${error}`,
+                    category: 'Other',
+                    merchant: 'Unknown'
+                },
+                source: {
+                    type: 'gmail',
+                    emailId: messageId,
+                    rawContent: `${subject}\n\n${body}`,
+                    subject: subject,
+                    from: from,
+                    parsingStrategy: 'failed'
+                },
+                confidenceScore: 0.1, // Very low confidence
+                status: 'pending',
+                metadata: {
+                    parsingError: error,
+                    needsManualReview: true
+                }
+            });
+
+            logger.info(`📝 Stored failed parsing for learning: ${subject.substring(0, 50)}`, {
+                userId,
+                error
+            });
+        } catch (err) {
+            logger.error('Error storing failed parsing', { error: err.message });
         }
     }
 
