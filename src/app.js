@@ -18,11 +18,18 @@ import googleAuthRoutes from './routes/googleAuth.routes.js';
 import pendingTransactionRoutes from './routes/pendingTransaction.routes.js';
 import deviceRoutes from './routes/device.routes.js';
 import profileRoutes from './routes/profile.routes.js';
+import merchantLocationRoutes from './routes/merchantLocation.routes.js';
+import suggestionsRoutes from './routes/suggestions.routes.js';
+import insightsRoutes from './routes/insights.routes.js';
 
 
 
 
 const app = express();
+
+// Trust proxy - required for apps behind reverse proxies (Render, Heroku, etc.)
+// This enables Express to trust X-Forwarded-* headers for rate limiting and client IP detection
+app.set('trust proxy', 1);
 
 // Security: Set various HTTP headers
 app.use(helmet());
@@ -198,6 +205,9 @@ app.use('/api/v1/settings', settingsRoutes);  // User settings routes
 app.use('/api/v1/pending-transactions', pendingTransactionRoutes);  // Pending transactions
 app.use('/api/v1/device', deviceRoutes);  // Device token registration
 app.use('/api/v1/profile', profileRoutes);  // Profile management
+app.use('/api/v1/merchant-locations', merchantLocationRoutes);  // Learned merchant locations
+app.use('/api/v1/suggestions', suggestionsRoutes);  // AI suggestions from learned patterns
+app.use('/api/v1/insights', insightsRoutes);  // Spending insights and analytics
 
 
 

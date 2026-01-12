@@ -320,7 +320,11 @@ router.post('/google/mobile', async (req, res) => {
                 email: user.email,
                 name: user.name,
                 profilePicture: user.profilePicture,
-                isVerified: user.isVerified
+                isVerified: user.isVerified,
+                gmailIntegration: {
+                    enabled: user.gmailIntegration?.enabled || false,
+                    authorizedEmail: user.gmailIntegration?.authorizedEmail || null
+                }
             }
         });
     } catch (error) {
