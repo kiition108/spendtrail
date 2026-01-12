@@ -8,6 +8,45 @@ import * as Sentry from '@sentry/node';
 const router = express.Router();
 
 /**
+ * @route   GET /api/v1/suggestions/all
+ * @desc    Get all learned merchant patterns for user
+ * @access  Private
+ */
+router.get('/all', protect, async (req, res) => {
+    try {
+        const patterns = await MerchantPattern.find({ user: req.user._id })
+            .sort({ totalTransactions: -1 })
+            .limit(100);
+
+        const summary = patterns.map(p => ({
+            merchantName: p.merchantName,
+            variations: p.variations.length,
+            totalTransactions: p.totalTransactions,
+            totalCorrections: p.totalCorrections,
+            hasCategory: !!p.categoryPattern?.preferredCategory,
+            categoryConfidence: p.categoryPattern?.confidence || 0,
+            hasPaymentMethod: !!p.paymentMethodPattern?.preferredMethod,
+            paymentMethodConfidence: p.paymentMethodPattern?.confidence || 0
+        }));
+
+        res.json({
+            success: true,
+            count: patterns.length,
+            patterns: summary
+        });
+    } catch (error) {
+        logger.error('Error getting all patterns', {
+            error: error.message
+        });
+        Sentry.captureException(error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get patterns'
+        });
+    }
+});
+
+/**
  * @route   GET /api/v1/suggestions/:transactionId
  * @desc    Get AI suggestions for pending transaction based on learned patterns
  * @access  Private
@@ -117,45 +156,6 @@ router.get('/merchant/:merchantName', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to get merchant pattern'
-        });
-    }
-});
-
-/**
- * @route   GET /api/v1/suggestions/all
- * @desc    Get all learned merchant patterns for user
- * @access  Private
- */
-router.get('/all', protect, async (req, res) => {
-    try {
-        const patterns = await MerchantPattern.find({ user: req.user._id })
-            .sort({ totalTransactions: -1 })
-            .limit(100);
-
-        const summary = patterns.map(p => ({
-            merchantName: p.merchantName,
-            variations: p.variations.length,
-            totalTransactions: p.totalTransactions,
-            totalCorrections: p.totalCorrections,
-            hasCategory: !!p.categoryPattern?.preferredCategory,
-            categoryConfidence: p.categoryPattern?.confidence || 0,
-            hasPaymentMethod: !!p.paymentMethodPattern?.preferredMethod,
-            paymentMethodConfidence: p.paymentMethodPattern?.confidence || 0
-        }));
-
-        res.json({
-            success: true,
-            count: patterns.length,
-            patterns: summary
-        });
-    } catch (error) {
-        logger.error('Error getting all patterns', {
-            error: error.message
-        });
-        Sentry.captureException(error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to get patterns'
         });
     }
 });
