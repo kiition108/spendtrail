@@ -112,7 +112,17 @@ export const verifyOtp = async (req, res) => {
         res.status(200).json({
             message: "Email verified successfully. Login successful.",
             token,
-            user: { id: user._id, email: user.email }
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                profilePicture: user.profilePicture,
+                isVerified: user.isVerified,
+                gmailIntegration: {
+                    enabled: user.gmailIntegration?.enabled || false,
+                    authorizedEmail: user.gmailIntegration?.authorizedEmail || null
+                }
+            }
         });
     } catch (error) {
         console.error("OTP Verification error:", error);
@@ -230,7 +240,17 @@ export const login = async (req, res) => {
         .json({
             message: "Login successful",
             token: token,
-            user: { "id": user._id, "email": user.email }
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                profilePicture: user.profilePicture,
+                isVerified: user.isVerified,
+                gmailIntegration: {
+                    enabled: user.gmailIntegration?.enabled || false,
+                    authorizedEmail: user.gmailIntegration?.authorizedEmail || null
+                }
+            }
         });
 }
 export const getCurrentUser = async (req, res) => {

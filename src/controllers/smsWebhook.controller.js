@@ -1,6 +1,7 @@
 import { Transaction } from '../models/Transaction.model.js';
 import { parseTransactionMessage } from '../utils/transactionParser.js';
-import { reverseGeocode } from '../utils/geocode.js'; // optional
+import { reverseGeocode } from '../utils/geocode.js';
+import { MerchantLocation } from '../models/MerchantLocation.model.js';
 import crypto from 'crypto';
 
 export const handleSmsWebhook = async (req, res) => {
@@ -42,20 +43,93 @@ export const handleSmsWebhook = async (req, res) => {
       });
     }
 
-    // 6. Location Handling
+    // 6. Location Handling + Merchant Learning
     let location = {
       lat: lat || null,
       lng: lng || null,
     };
-    if (lat && lng) {
+
+    // Try to lookup learned location first
+    if (merchant) {
+      const merchantKey = merchant.toLowerCase().trim();
+      const learned = await MerchantLocation.findOne({
+        user: req.user.id,
+        merchantKey,
+      });
+
+      if (learned && learned.confidence >= 0.5) {
+        // Use learned location (5+ visits)
+        location = {
+          lat: learned.location.lat,
+          lng: learned.location.lng,
+          city: learned.location.city,
+          address: learned.location.address,
+        };
+        console.log(`✅ Using learned location for ${merchant} (confidence: ${learned.confidence})`);
+      }
+    }
+
+    // If no learned location and GPS provided, use GPS and learn from it
+    if (!location.lat && lat && lng) {
       try {
         const geoData = await reverseGeocode(lat, lng);
         if (geoData) {
           location = { ...location, ...geoData };
         }
+
+        // Learn this location for future
+        if (merchant) {
+          const merchantKey = merchant.toLowerCase().trim();
+          const learned = await MerchantLocation.findOne({
+            user: req.user.id,
+            merchantKey,
+          });
+
+          if (learned) {
+            // Update existing
+            learned.visits += 1;
+            learned.visitHistory.push({
+              lat,
+              lng,
+              timestamp: txnDate,
+            });
+
+            // Keep only last 20 visits
+            if (learned.visitHistory.length > 20) {
+              learned.visitHistory = learned.visitHistory.slice(-20);
+            }
+
+            // Recalculate average location
+            const avgLat = learned.visitHistory.reduce((sum, v) => sum + v.lat, 0) / learned.visitHistory.length;
+            const avgLng = learned.visitHistory.reduce((sum, v) => sum + v.lng, 0) / learned.visitHistory.length;
+
+            learned.location.lat = avgLat;
+            learned.location.lng = avgLng;
+            learned.confidence = Math.min(learned.visits / 10, 1.0);
+
+            await learned.save();
+            console.log(`📚 Learned location updated for ${merchant} (visits: ${learned.visits}, confidence: ${learned.confidence})`);
+          } else {
+            // Create new learned location
+            await MerchantLocation.create({
+              user: req.user.id,
+              merchantKey,
+              merchantName: merchant,
+              location: {
+                lat,
+                lng,
+                city: geoData?.city,
+                address: geoData?.address,
+              },
+              visits: 1,
+              confidence: 0.2,
+              visitHistory: [{ lat, lng, timestamp: txnDate }],
+            });
+            console.log(`🆕 Started learning location for ${merchant}`);
+          }
+        }
       } catch (err) {
         console.error('Geocoding failed:', err);
-        // Continue without full address data
       }
     }
 

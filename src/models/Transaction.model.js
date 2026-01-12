@@ -17,12 +17,28 @@ const transactionSchema = new mongoose.Schema({
   tags: [{ type: String }],
 
   location: {
-    lat: Number,
-    lng: Number,
-    address: String,
-    city: String,
-    country: String,
-    placeName: String,  // e.g. Starbucks Koramangala
+    type: { 
+      type: String, 
+      enum: ['exact', 'approx', 'online', 'unknown'], 
+      default: 'unknown' 
+    },
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null },
+    address: { type: String },
+    city: { type: String },
+    country: { type: String, default: 'India' },
+    placeName: { type: String },  // e.g. Starbucks Koramangala
+    confidence: { 
+      type: Number, 
+      min: 0, 
+      max: 1, 
+      default: 0 
+    },
+    source: { 
+      type: String, 
+      enum: ['gps_exact', 'gps_correlation', 'merchant_lookup', 'bank_hint', 'manual', 'unknown'],
+      default: 'unknown'
+    },
   },
 
   timestamp: { type: Date, default: Date.now },

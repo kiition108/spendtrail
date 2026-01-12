@@ -98,6 +98,7 @@ pendingTransactionSchema.virtual('formattedAmount').get(function() {
 // Method to approve transaction
 pendingTransactionSchema.methods.approve = async function(correctedData = null) {
     const Transaction = mongoose.model('Transaction');
+    const MerchantLocation = mongoose.model('MerchantLocation');
     
     // Use corrected data if provided, otherwise use parsed data
     const transactionData = correctedData || this.parsedData;
@@ -116,7 +117,8 @@ pendingTransactionSchema.methods.approve = async function(correctedData = null) 
         metadata: {
             fromPending: true,
             originalParsedData: this.parsedData,
-            correctedData: correctedData ? true : false
+            correctedData: correctedData ? true : false,
+            userCorrected: !!correctedData
         }
     });
 
