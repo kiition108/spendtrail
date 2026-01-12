@@ -1,6 +1,6 @@
 import { convert } from 'html-to-text';
 import { User } from '../models/User.model.js';
-import { Transaction } from '../models/Transaction.model.js';
+import { PendingTransaction } from '../models/PendingTransaction.model.js';
 import { parseTransactionMessage } from '../utils/transactionParser.js';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
@@ -156,35 +156,54 @@ export class EmailPollerService {
                 amount, merchant, paymentMethod, category, subCategory, type
             } = parsedData;
 
-            // Deduplication
+            // Deduplication - Check both pending and existing transactions
             const dateStr = new Date().toISOString().slice(0, 10);
             const dedupeKey = `${amount}_${merchant}_${dateStr}_${user.id}`;
             const messageHash = crypto.createHash('sha256').update(dedupeKey).digest('hex');
 
-            const isDuplicate = await Transaction.findOne({ user: user.id, messageHash });
+            const isDuplicate = await PendingTransaction.findOne({ 
+                user: user.id, 
+                'source.emailId': messageHash 
+            });
+            
             if (isDuplicate) {
                 logger.info(`📧 Duplicate transaction detected for user ${user.id}`);
                 return;
             }
 
-            // Create Transaction
-            const transaction = new Transaction({
+            // Calculate confidence score (testmail.app has lower confidence than Gmail OAuth)
+            const confidenceScore = 0.7; // Medium confidence for forwarded emails
+
+            // Create Pending Transaction for user approval
+            const pendingTransaction = await PendingTransaction.create({
                 user: user.id,
-                amount,
-                currency: 'INR',
-                category,
-                subCategory,
-                merchant,
-                note: `Parsed from Email: ${subject}`,
-                paymentMethod,
-                source: 'email',
-                tags: ['parsed', 'email', tag],
-                timestamp: new Date(emailData.timestamp || Date.now()),
-                messageHash
+                parsedData: {
+                    amount,
+                    type: type || 'expense',
+                    description: `Parsed from Email: ${subject}`,
+                    category: category || 'Other',
+                    merchant: merchant || 'Unknown',
+                    date: new Date(emailData.timestamp || Date.now()),
+                    paymentMethod: paymentMethod || 'email',
+                },
+                source: {
+                    type: 'email',
+                    emailId: messageHash,
+                    rawContent: rawMessage,
+                    subject: subject,
+                    from: from,
+                    parsingStrategy: 'testmail_forwarded'
+                },
+                confidenceScore: confidenceScore,
+                status: 'pending'
             });
 
-            await transaction.save();
-            logger.info(`✅ Created transaction via Email for user ${user.email}: ${amount} at ${merchant}`);
+            logger.info(`📬 Created pending transaction from Testmail for user ${user.email}`, {
+                pendingId: pendingTransaction._id,
+                amount,
+                merchant,
+                userId: user.id
+            });
 
         } catch (error) {
             logger.error('Error processing individual email', { error: error.message });

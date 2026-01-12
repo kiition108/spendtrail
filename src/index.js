@@ -41,9 +41,14 @@ import { multiUserGmailPoller } from './services/multiUserGmailPoller.js';
 
 connectDB()
     .then(() => {
-        server = app.listen(process.env.PORT || 8000, '0.0.0.0', () => {
+        console.log('✅ Database connected, about to start server...');
+        const PORT = process.env.PORT || 8000;
+        console.log(`Attempting to listen on port ${PORT}...`);
+        
+        server = app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🎉 SERVER IS RUNNING ON PORT ${PORT}`);
             logger.info('Server started successfully', { 
-                port: process.env.PORT || 8000, 
+                port: PORT, 
                 environment: process.env.NODE_ENV 
             });
 
@@ -58,6 +63,11 @@ connectDB()
             } else {
                 logger.info('Gmail integration is disabled');
             }
+        });
+        
+        server.on('error', (error) => {
+            console.error('❌ Server error:', error);
+            logger.error('Server startup error', { error: error.message });
         });
     })
     .catch((error) => {
