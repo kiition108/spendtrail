@@ -196,6 +196,10 @@ const todayTransactions = await Transaction.find({
   timestamp: { $gte: startOfToday, $lte: now }
 }).select('amount timestamp');
 
+// Separate income and expenses for today
+const todayExpenses = todayTransactions.filter(txn => txn.amount > 0);
+const todayIncome = todayTransactions.filter(txn => txn.amount < 0);
+
 // Weekly aggregation grouped by day
 const weekAggregation = await Transaction.aggregate([
   {
@@ -208,6 +212,8 @@ const weekAggregation = await Transaction.aggregate([
     $group: {
       _id: { $dayOfWeek: "$timestamp" }, // 1 (Sun) - 7 (Sat)
       total: { $sum: "$amount" },
+      expenses: { $sum: { $cond: [{ $gt: ["$amount", 0] }, "$amount", 0] } },
+      income: { $sum: { $cond: [{ $lt: ["$amount", 0] }, { $abs: "$amount" }, 0] } },
       count: { $sum: 1 }
     }
   },
@@ -215,13 +221,16 @@ const weekAggregation = await Transaction.aggregate([
 ]);
 
 // Total calculations
-const totalToday = todayTransactions.reduce((acc, txn) => acc + txn.amount, 0);
-const totalThisWeek = weekAggregation.reduce((acc, t) => acc + t.total, 0);
+const totalTodayExpenses = todayExpenses.reduce((acc, txn) => acc + txn.amount, 0);
+const totalTodayIncome = Math.abs(todayIncome.reduce((acc, txn) => acc + txn.amount, 0));
+const totalWeekExpenses = weekAggregation.reduce((acc, t) => acc + t.expenses, 0);
+const totalWeekIncome = weekAggregation.reduce((acc, t) => acc + t.income, 0);
 
 // Response
 res.json({
   today: {
-    total: totalToday,
+    expenses: totalTodayExpenses,
+    income: totalTodayIncome,
     count: todayTransactions.length,
     chart: todayTransactions.map(txn => ({
       time: txn.timestamp,
@@ -229,11 +238,13 @@ res.json({
     }))
   },
   week: {
-    total: totalThisWeek,
+    expenses: totalWeekExpenses,
+    income: totalWeekIncome,
     count: weekAggregation.reduce((acc, t) => acc + t.count, 0),
     chart: weekAggregation.map(t => ({
-      day: dayNames[(t._id - 1) % 7], // 1=Sun, so offset by -1 for array index
-      amount: t.total
+      day: dayNames[(t._id - 1) % 7],
+      expenses: t.expenses,
+      income: t.income
     }))
   }
 });
