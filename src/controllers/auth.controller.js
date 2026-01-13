@@ -1,8 +1,7 @@
 import { User } from "../models/User.model.js";
 import jwt from "jsonwebtoken";
-import sendEmail from "../utils/sendEmail.js";
-import { getOtpEmailTemplate } from "../utils/emailTemplates.js";
-import crypto from "crypto";
+import sendEmail from "../utils/email.helper.js";
+import { getOtpEmailTemplate } from "../utils/email.templates.js";
 
 
 const generateToken = (userId) => {

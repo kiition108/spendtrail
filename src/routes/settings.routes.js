@@ -3,7 +3,7 @@ import { User } from '../models/User.model.js';
 import { google } from 'googleapis';
 import logger from '../utils/logger.js';
 import crypto from 'crypto';
-import { auth } from '../middleware/authMiddleware.js';
+import { auth } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 

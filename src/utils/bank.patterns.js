@@ -164,14 +164,31 @@ export const parseBankEmail = (emailFrom, subject, body) => {
     const lowerText = fullText.toLowerCase();
     if (bankPattern.transactionTypeKeywords.credit.some(keyword => lowerText.includes(keyword))) {
         type = 'income';
+        amount = amount ? -Math.abs(amount) : null; // Apply negative sign for income
     } else if (bankPattern.transactionTypeKeywords.debit.some(keyword => lowerText.includes(keyword))) {
         type = 'expense';
+        amount = amount ? Math.abs(amount) : null; // Ensure positive for expense
+    }
+
+    // Extract location if available
+    let location = null;
+    
+    // Pattern 1: GPS coordinates (some banks include this)
+    const gpsPattern = /(?:lat|latitude)[:\s]+([\-]?\d+\.\d+)[,\s]+(?:lon|lng|longitude)[:\s]+([\-]?\d+\.\d+)/i;
+    const gpsMatch = fullText.match(gpsPattern);
+    
+    if (gpsMatch) {
+        location = {
+            type: 'Point',
+            coordinates: [parseFloat(gpsMatch[2]), parseFloat(gpsMatch[1])] // [lng, lat] for GeoJSON
+        };
     }
 
     return {
         amount,
         merchant: merchant || 'Unknown',
         type,
+        location,
         bankName: bankPattern.name,
         parsedBy: 'bank-pattern'
     };

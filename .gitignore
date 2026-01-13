@@ -1,20 +1,29 @@
 ### Node ###
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+pm2-*.log
 
-# Testing and Setup Files
+# Testing and Development Files
 test*.js
-*test*.js
+check*.js
 gmailSetup.js
 gmail-tokens.json
+
+# Load Testing
+artillery-*.yml
+artillery-processor.cjs
+
+# Documentation (keep essential ones)
 *.md
 !README.md
+!DEPLOYMENT_READINESS.md
+!SECURITY_MONITORING_GUIDE.md
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -85,8 +94,13 @@ web_modules/
 .env
 .env.*
 
-# Gmail API tokens
+# Gmail API tokens and setup
 gmail-tokens.json
+gmailSetup.js
+
+# PM2
+.pm2/
+ecosystem.config.cjs
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -98,3 +112,6 @@ out
 
 #markdown files
 *.md    
+
+#testing scripts
+check*.js

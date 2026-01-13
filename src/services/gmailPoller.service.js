@@ -2,7 +2,7 @@ import { google } from 'googleapis';
 import { convert } from 'html-to-text';
 import { User } from '../models/User.model.js';
 import { Transaction } from '../models/Transaction.model.js';
-import { parseTransactionMessage } from '../utils/transactionParser.js';
+import { parseTransactionMessage } from '../utils/transaction.parser.js';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';

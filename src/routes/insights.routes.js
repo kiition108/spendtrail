@@ -1,5 +1,5 @@
 import express from 'express';
-import { auth as protect } from '../middleware/authMiddleware.js';
+import { auth as protect } from '../middleware/auth.middleware.js';
 import { Transaction } from '../models/Transaction.model.js';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';

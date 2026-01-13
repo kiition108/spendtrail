@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../utils/logger.js';
 
 const pendingTransactionSchema = new mongoose.Schema({
     user: {
@@ -173,13 +174,17 @@ pendingTransactionSchema.methods.approve = async function(correctedData = null) 
     const transaction = await Transaction.create({
         user: this.user,
         amount: transactionData.amount,
-        type: transactionData.type,
-        category: transactionData.category,
-        description: transactionData.description,
+        category: transactionData.category || 'Other',
+        note: transactionData.description,
         merchant: transactionData.merchant,
-        date: transactionData.date || new Date(),
+        timestamp: transactionData.date || new Date(),
         source: this.source.type,
-        location: transactionData.location,
+        location: transactionData.location?.coordinates ? {
+            type: 'exact',
+            lat: transactionData.location.coordinates[1],
+            lng: transactionData.location.coordinates[0],
+            source: 'bank_hint'
+        } : undefined,
         metadata: {
             fromPending: true,
             originalParsedData: this.parsedData,

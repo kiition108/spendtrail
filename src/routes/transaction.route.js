@@ -9,7 +9,7 @@ import {
     getTransactionsBySearch,
     dayWeeklyTransactionSumm
 } from '../controllers/transaction.controller.js';
-import {auth} from '../middleware/authMiddleware.js';
+import {auth} from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 

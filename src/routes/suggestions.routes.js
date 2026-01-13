@@ -1,5 +1,5 @@
 import express from 'express';
-import { auth as protect } from '../middleware/authMiddleware.js';
+import { auth as protect } from '../middleware/auth.middleware.js';
 import { PendingTransaction } from '../models/PendingTransaction.model.js';
 import { MerchantPattern } from '../models/MerchantPattern.model.js';
 import logger from '../utils/logger.js';

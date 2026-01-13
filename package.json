@@ -8,7 +8,20 @@
     "start": "node --experimental-json-modules src/index.js",
     "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js",
     "gmail:setup": "node -r dotenv/config gmailSetup.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:location": "node testLocationSystem.js",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "security:audit": "npm audit",
+    "security:check": "npm audit && eslint src/**/*.js",
+    "load:test": "artillery run artillery-load-test.yml",
+    "load:test:simple": "artillery run artillery-simple-test.yml",
+    "load:test:quick": "artillery quick --count 10 --num 5 http://localhost:5000/api/v1/health",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs spendtrail-api",
+    "pm2:monit": "pm2 monit"
   },
   "repository": {
     "type": "git",
@@ -33,7 +46,6 @@
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.5.0",
     "googleapis": "^170.0.0",
-    "helmet": "^8.1.0",
     "hpp": "^0.2.3",
     "html-to-text": "^9.0.5",
     "jsonwebtoken": "^9.0.2",
@@ -46,6 +58,9 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
+    "eslint": "^9.39.2",
+    "eslint-plugin-security": "^3.0.1",
+    "helmet": "^8.1.0",
     "nodemon": "^3.1.11"
   }
 }

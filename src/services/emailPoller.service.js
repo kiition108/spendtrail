@@ -1,7 +1,7 @@
 import { convert } from 'html-to-text';
 import { User } from '../models/User.model.js';
 import { PendingTransaction } from '../models/PendingTransaction.model.js';
-import { parseTransactionMessage } from '../utils/transactionParser.js';
+import { parseTransactionMessage } from '../utils/transaction.parser.js';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';
@@ -142,18 +142,21 @@ export class EmailPollerService {
             const rawMessage = text || convert(html || '', { wordwrap: 130 });
             if (!rawMessage) return;
 
+            // Use subject or fallback to a default message
+            const emailSubject = subject || 'Transaction Email';
+
             // Parse Transaction Details
             // Combine subject and body for better context
-            const fullMessage = `${subject} ${rawMessage}`;
+            const fullMessage = `${emailSubject} ${rawMessage}`;
             const parsedData = parseTransactionMessage(fullMessage);
 
             if (parsedData.error || !parsedData.isParsed) {
-                logger.warn(`📧 Could not parse transaction from email: ${subject}`);
+                logger.warn(`📧 Could not parse transaction from email: ${emailSubject}`);
                 return;
             }
 
             const {
-                amount, merchant, paymentMethod, category, subCategory, type
+                amount, merchant, paymentMethod, category, subCategory, type, location
             } = parsedData;
 
             // Deduplication - Check both pending and existing transactions
@@ -180,17 +183,18 @@ export class EmailPollerService {
                 parsedData: {
                     amount,
                     type: type || 'expense',
-                    description: `Parsed from Email: ${subject}`,
+                    description: `Parsed from Email: ${emailSubject}`,
                     category: category || 'Other',
                     merchant: merchant || 'Unknown',
                     date: new Date(emailData.timestamp || Date.now()),
                     paymentMethod: paymentMethod || 'email',
+                    location: location || null
                 },
                 source: {
                     type: 'email',
                     emailId: messageHash,
                     rawContent: rawMessage,
-                    subject: subject,
+                    subject: emailSubject,
                     from: from,
                     parsingStrategy: 'testmail_forwarded'
                 },

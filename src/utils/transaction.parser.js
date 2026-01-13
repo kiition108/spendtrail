@@ -1,4 +1,4 @@
-import { classifyCategory } from './categoryClassifier.js';
+import { classifyCategory } from './category.classifier.js';
 
 /**
  * Parses transaction details from a message string (SMS or Email body)
@@ -67,6 +67,39 @@ export const parseTransactionMessage = (message) => {
         finalAmount = amount;
     }
 
+    // 5. Location Extraction (if available)
+    let location = null;
+    
+    // Pattern 1: Extract GPS coordinates if present (some bank SMSs include this)
+    const gpsPattern = /(?:lat|latitude)[:\s]+([\-]?\d+\.\d+)[,\s]+(?:lon|lng|longitude)[:\s]+([\-]?\d+\.\d+)/i;
+    const gpsMatch = message.match(gpsPattern);
+    
+    if (gpsMatch) {
+        location = {
+            type: 'Point',
+            coordinates: [parseFloat(gpsMatch[2]), parseFloat(gpsMatch[1])] // [lng, lat] for GeoJSON
+        };
+    } else {
+        // Pattern 2: Extract location hints from merchant or transaction description
+        const locationPatterns = [
+            /at\s+([A-Za-z\s]+),\s*([A-Za-z\s]+)/i, // "at Store Name, City Name"
+            /in\s+([A-Za-z\s]{3,30})(?:\s+(?:on|via|ref))/i, // "in Location on..."
+            /(\w+(?:\s+\w+)?),\s+(\w+)\s+(?:branch|store|outlet)/i // "Location, City branch"
+        ];
+        
+        for (const pattern of locationPatterns) {
+            const match = message.match(pattern);
+            if (match) {
+                // Store location as text hint for potential geocoding later
+                location = {
+                    hint: match[1]?.trim(),
+                    city: match[2]?.trim()
+                };
+                break;
+            }
+        }
+    }
+
     return {
         amount: finalAmount,
         currency: 'INR',
@@ -75,6 +108,7 @@ export const parseTransactionMessage = (message) => {
         category,
         subCategory,
         type,
+        location,
         isParsed: true
     };
 };

@@ -1,5 +1,5 @@
 import express from 'express';
-import { auth as protect } from '../middleware/authMiddleware.js';
+import { auth as protect } from '../middleware/auth.middleware.js';
 import { User } from '../models/User.model.js';
 import logger from '../utils/logger.js';
 
@@ -136,7 +136,7 @@ router.post('/test-notification', protect, async (req, res) => {
         }
 
         // Lazy import NotificationService
-        const { default: NotificationService } = await import('../services/notificationService.js');
+        const { default: NotificationService } = await import('../services/notification.service.js');
         const notificationService = new NotificationService();
 
         await notificationService.sendNotification(
