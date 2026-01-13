@@ -3,12 +3,13 @@ import { convert } from 'html-to-text';
 import { User } from '../models/User.model.js';
 import { Transaction } from '../models/Transaction.model.js';
 import { PendingTransaction } from '../models/PendingTransaction.model.js';
-import { parseTransactionMessage } from '../utils/transactionParser.js';
-import { parseBankEmail } from '../utils/bankPatterns.js';
+import { parseTransactionMessage } from '../utils/transaction.parser.js';
+import { parseBankEmail } from '../utils/bank.patterns.js';
 import { EmailParsingPattern } from '../models/EmailParsingPattern.model.js';
-import { notificationService } from './notificationService.js';
+import { notificationService } from './notification.service.js';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';
+import { locationMatchingService } from './locationMatching.service.js';
 
 /**
  * Multi-User Gmail API Email Poller Service
@@ -328,6 +329,25 @@ export class MultiUserGmailPollerService {
             // Calculate confidence score based on parsing quality
             const confidenceScore = this.calculateConfidenceScore(parsed, messageText);
 
+            // Intelligent location matching
+            const locationMatch = await locationMatchingService.matchTransactionLocation({
+                userId: user._id,
+                timestamp: date,
+                merchantName: parsed.merchant,
+                emailSender: from,
+                emailContent: messageText,
+                parsedLocation: parsed.location
+            });
+
+            // Use matched location or fallback to parsed location
+            const finalLocation = locationMatch ? {
+                type: 'Point',
+                coordinates: locationMatch.location?.coordinates || [
+                    locationMatch.lng,
+                    locationMatch.lat
+                ]
+            } : parsed.location;
+
             // Create pending transaction for user approval
             try {
                 const pendingTransaction = await PendingTransaction.create({
@@ -341,7 +361,14 @@ export class MultiUserGmailPollerService {
                         date: parsed.date || date,
                         accountNumber: parsed.accountNumber,
                         balance: parsed.balance,
-                        paymentMethod: parsed.paymentMethod
+                        paymentMethod: parsed.paymentMethod,
+                        location: finalLocation
+                    },
+                    metadata: {
+                        locationSource: locationMatch?.source,
+                        locationConfidence: locationMatch?.confidence,
+                        locationTimeDiff: locationMatch?.timeDiffMinutes,
+                        needsGeocoding: locationMatch?.needsGeocoding
                     },
                     source: {
                         type: 'gmail',

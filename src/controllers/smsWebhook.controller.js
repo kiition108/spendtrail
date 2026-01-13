@@ -1,6 +1,6 @@
 import { Transaction } from '../models/Transaction.model.js';
-import { parseTransactionMessage } from '../utils/transactionParser.js';
-import { reverseGeocode } from '../utils/geocode.js';
+import { parseTransactionMessage } from '../utils/transaction.parser.js';
+import { reverseGeocode } from '../utils/geocode.helper.js';
 import { MerchantLocation } from '../models/MerchantLocation.model.js';
 import crypto from 'crypto';
 

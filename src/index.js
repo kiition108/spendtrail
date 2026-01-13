@@ -36,8 +36,8 @@ process.on('uncaughtException', (err) => {
 
 let server;
 
-import { emailPoller } from './services/emailPoller.js';
-import { multiUserGmailPoller } from './services/multiUserGmailPoller.js';
+import { emailPoller } from './services/emailPoller.service.js';
+import { multiUserGmailPoller } from './services/multiUserGmailPoller.service.js';
 
 connectDB()
     .then(() => {

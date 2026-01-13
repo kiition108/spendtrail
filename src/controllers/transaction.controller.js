@@ -1,5 +1,5 @@
 import {Transaction} from '../models/Transaction.model.js';
-import { reverseGeocode } from '../utils/geocode.js';
+import { reverseGeocode } from '../utils/geocode.helper.js';
 import { logInfo, logError, logWarn } from '../utils/logService.js';
 import moment from 'moment-timezone'
 

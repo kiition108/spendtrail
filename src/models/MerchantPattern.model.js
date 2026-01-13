@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { fuzzyMatch, normalizeMerchantName } from '../utils/stringSimilarity.js';
+import { fuzzyMatch, normalizeMerchantName } from '../utils/stringSimilarity.helper.js';
 
 /**
  * MerchantPattern Model

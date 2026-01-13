@@ -1,6 +1,6 @@
 import express from 'express';
 import { MerchantLocation } from '../models/MerchantLocation.model.js';
-import { auth } from '../middleware/authMiddleware.js';
+import { auth } from '../middleware/auth.middleware.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();

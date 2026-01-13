@@ -1,12 +1,12 @@
 import express from 'express';
-import { auth as protect } from '../middleware/authMiddleware.js';
+import { auth as protect } from '../middleware/auth.middleware.js';
 import { PendingTransaction } from '../models/PendingTransaction.model.js';
-import { MerchantLocation } from '../models/MerchantLocation.model.js';
 import { MerchantPattern } from '../models/MerchantPattern.model.js';
 import { LearningPattern } from '../models/LearningPattern.model.js';
 import logger from '../utils/logger.js';
 import * as Sentry from '@sentry/node';
-import { notificationService } from '../services/notificationService.js';
+import { notificationService } from '../services/notification.service.js';
+import { locationMatchingService } from '../services/locationMatching.service.js';
 
 const router = express.Router();
 
@@ -122,65 +122,27 @@ router.post('/:id/approve', protect, async (req, res) => {
         // Approve transaction (creates actual transaction)
         const transaction = await pendingTransaction.approve(correctedData);
 
-        // Learn merchant location from user feedback
-        const finalData = correctedData || pendingTransaction.parsedData;
-        const merchant = finalData.merchant;
-        
-        if (merchant && pendingTransaction.parsedData.location?.coordinates?.length === 2) {
+        // Learn from location corrections using intelligent location matching service
+        if (correctedData && correctedData.location) {
             try {
-                const [lng, lat] = pendingTransaction.parsedData.location.coordinates;
-                const merchantKey = merchant.toLowerCase().trim();
-                
-                const learned = await MerchantLocation.findOne({
-                    user: req.user._id,
-                    merchantKey,
+                // Learn from this correction to improve future location matching
+                // This handles BOTH MerchantLocation and EmailLocationPattern
+                await locationMatchingService.learnFromCorrection({
+                    userId: req.user._id,
+                    sender: pendingTransaction.source.emailId,
+                    emailContent: pendingTransaction.source.rawContent,
+                    merchantName: pendingTransaction.parsedData.merchant,
+                    originalLocation: pendingTransaction.parsedData.location,
+                    correctedLocation: correctedData.location
                 });
-
-                if (learned) {
-                    // Update existing learned location
-                    learned.visits += 1;
-                    learned.visitHistory.push({
-                        lat,
-                        lng,
-                        timestamp: transaction.date || new Date(),
-                    });
-
-                    // Keep only last 20 visits
-                    if (learned.visitHistory.length > 20) {
-                        learned.visitHistory = learned.visitHistory.slice(-20);
-                    }
-
-                    // Recalculate average location
-                    const avgLat = learned.visitHistory.reduce((sum, v) => sum + v.lat, 0) / learned.visitHistory.length;
-                    const avgLng = learned.visitHistory.reduce((sum, v) => sum + v.lng, 0) / learned.visitHistory.length;
-
-                    learned.location.lat = avgLat;
-                    learned.location.lng = avgLng;
-                    learned.confidence = Math.min(learned.visits / 10, 1.0);
-
-                    await learned.save();
-                    logger.info('Merchant location learned from user approval', {
-                        merchant,
-                        visits: learned.visits,
-                        confidence: learned.confidence,
-                    });
-                } else {
-                    // Create new learned location
-                    await MerchantLocation.create({
-                        user: req.user._id,
-                        merchantKey,
-                        merchantName: merchant,
-                        location: { lat, lng },
-                        visits: 1,
-                        confidence: 0.2,
-                        visitHistory: [{ lat, lng, timestamp: transaction.date || new Date() }],
-                    });
-                    logger.info('Started learning merchant location from approval', { merchant });
-                }
-            } catch (learningError) {
-                logger.error('Failed to learn merchant location from approval', {
-                    error: learningError.message,
-                    merchant,
+                
+                logger.info('Location learning from user correction completed', {
+                    merchant: pendingTransaction.parsedData.merchant,
+                    sender: pendingTransaction.source.emailId
+                });
+            } catch (locationLearningError) {
+                logger.error('Failed to learn from location correction', {
+                    error: locationLearningError.message
                 });
             }
         }
@@ -309,7 +271,7 @@ router.post('/:id/approve', protect, async (req, res) => {
             pendingId: pendingTransaction._id,
             transactionId: transaction._id,
             userId: req.user._id,
-            hasCorrectionscorrectedData: !!correctedData
+            hasCorrectedData: !!correctedData
         });
 
         // Send approval notification

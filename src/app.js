@@ -4,7 +4,6 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import compression from 'compression';
-import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
 import * as Sentry from '@sentry/node';
 
@@ -22,7 +21,8 @@ import merchantLocationRoutes from './routes/merchantLocation.routes.js';
 import suggestionsRoutes from './routes/suggestions.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
 import logsRoutes from './routes/logs.routes.js';
-import { requestLogger, errorLogger } from './middlewares/requestLogger.middleware.js';
+import locationHistoryRoutes from './routes/locationHistory.routes.js';
+import { requestLogger, errorLogger } from './middleware/requestLogger.middleware.js';
 
 
 
@@ -214,6 +214,7 @@ app.use('/api/v1/merchant-locations', merchantLocationRoutes);  // Learned merch
 app.use('/api/v1/suggestions', suggestionsRoutes);  // AI suggestions from learned patterns
 app.use('/api/v1/insights', insightsRoutes);  // Spending insights and analytics
 app.use('/api/v1/logs', logsRoutes);  // Log viewer API
+app.use('/api/v1/location', locationHistoryRoutes);  // Background location tracking
 
 // Error logging middleware (captures errors with request context)
 app.use(errorLogger);

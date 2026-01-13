@@ -1,5 +1,5 @@
 import express from 'express';
-import { gmailPoller } from '../services/gmailPoller.js';
+import { gmailPoller } from '../services/gmailPoller.service.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
