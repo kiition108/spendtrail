@@ -41,22 +41,10 @@ const emailParsingPatternSchema = new mongoose.Schema({
     },
 
     // Original parsed data (what the parser extracted)
-    originalParsed: {
-        amount: Number,
-        type: String,
-        merchant: String,
-        category: String,
-        paymentMethod: String
-    },
+    originalParsed: mongoose.Schema.Types.Mixed,
 
     // Corrected data (what user actually confirmed/edited)
-    correctedData: {
-        amount: { type: Number, required: true },
-        type: { type: String, enum: ['income', 'expense'], required: true },
-        merchant: String,
-        category: String,
-        paymentMethod: String
-    },
+    correctedData: mongoose.Schema.Types.Mixed,
 
     // Raw email content for pattern analysis
     rawEmail: {

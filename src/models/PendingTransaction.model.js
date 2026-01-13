@@ -63,14 +63,7 @@ const pendingTransactionSchema = new mongoose.Schema({
     // User feedback (for ML improvement)
     userFeedback: {
         approved: Boolean,
-        correctedData: {
-            amount: Number,
-            type: String,
-            category: String,
-            description: String,
-            merchant: String,
-            date: Date
-        },
+        correctedData: mongoose.Schema.Types.Mixed,
         feedbackDate: Date,
         notes: String
     },
