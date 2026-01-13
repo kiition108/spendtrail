@@ -148,6 +148,7 @@ router.post('/:id/approve', protect, async (req, res) => {
         }
 
         // Learn merchant patterns (category, payment method, variations)
+        const merchant = correctedData?.merchant || pendingTransaction.parsedData.merchant;
         if (merchant) {
             try {
                 const merchantKey = merchant.toLowerCase().trim();
