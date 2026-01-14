@@ -47,9 +47,9 @@ class LocationMatchingService {
             if (merchantName) {
                 const learnedLocation = await this.getLearnedMerchantLocation(userId, merchantName);
                 if (learnedLocation) {
-                    logger.info('📍 Using learned merchant location', { 
-                        merchant: merchantName, 
-                        confidence: learnedLocation.confidence 
+                    logger.info('📍 Using learned merchant location', {
+                        merchant: merchantName,
+                        confidence: learnedLocation.confidence
                     });
                     return {
                         location: {
@@ -65,37 +65,38 @@ class LocationMatchingService {
             }
 
             // Strategy 3: Match user's background location near transaction time
+            // Use AVERAGE location for better approximation over the time window
             const backgroundLocation = await this.matchBackgroundLocation(userId, timestamp);
             if (backgroundLocation) {
-                logger.info('📍 Using background location match', { 
-                    timeDiff: backgroundLocation.timeDiffMinutes,
-                    confidence: backgroundLocation.confidence 
+                logger.info('📍 Using background location match (AVERAGE)', {
+                    count: backgroundLocation.count,
+                    confidence: backgroundLocation.confidence
                 });
                 return {
                     location: {
                         type: 'Point',
-                        coordinates: [backgroundLocation.lng, backgroundLocation.lat]
+                        coordinates: backgroundLocation.coordinates // [lng, lat]
                     },
                     lat: backgroundLocation.lat,
                     lng: backgroundLocation.lng,
                     source: LOCATION_SOURCES.BACKGROUND_LOCATION_HISTORY,
                     confidence: backgroundLocation.confidence,
-                    timeDiffMinutes: backgroundLocation.timeDiffMinutes
+                    timeDiffMinutes: 0 // Averaged over window
                 };
             }
 
             // Strategy 4: Try learned email location patterns
             if (emailSender && emailContent) {
                 const patternLocation = await this.matchEmailLocationPattern(
-                    userId, 
-                    emailSender, 
-                    emailContent, 
+                    userId,
+                    emailSender,
+                    emailContent,
                     merchantName
                 );
                 if (patternLocation) {
-                    logger.info('📍 Using learned email pattern location', { 
+                    logger.info('📍 Using learned email pattern location', {
                         sender: emailSender,
-                        confidence: patternLocation.confidence 
+                        confidence: patternLocation.confidence
                     });
                     return {
                         location: {
@@ -112,8 +113,8 @@ class LocationMatchingService {
 
             // Strategy 5: Use text hint if available
             if (parsedLocation && parsedLocation.hint) {
-                logger.info('📍 Location hint available for geocoding', { 
-                    hint: parsedLocation.hint 
+                logger.info('📍 Location hint available for geocoding', {
+                    hint: parsedLocation.hint
                 });
                 return {
                     locationHint: parsedLocation.hint,
@@ -158,9 +159,9 @@ class LocationMatchingService {
      */
     async matchBackgroundLocation(userId, timestamp, windowMinutes = BACKGROUND_LOCATION_TIME_WINDOW) {
         try {
-            const location = await UserLocationHistory.findLocationNearTime(
-                userId, 
-                timestamp, 
+            const location = await UserLocationHistory.getAverageLocationNearTime(
+                userId,
+                timestamp,
                 windowMinutes
             );
 
@@ -182,8 +183,8 @@ class LocationMatchingService {
     async matchEmailLocationPattern(userId, sender, emailContent, merchantName) {
         try {
             const patterns = await EmailLocationPattern.findPatternForSender(
-                userId, 
-                sender, 
+                userId,
+                sender,
                 merchantName
             );
 
@@ -267,7 +268,7 @@ class LocationMatchingService {
                     existingPattern.successfulExtractions += 1;
                     existingPattern.timesMatched += 1;
                     existingPattern.confidence = Math.min(
-                        existingPattern.successfulExtractions / existingPattern.timesMatched, 
+                        existingPattern.successfulExtractions / existingPattern.timesMatched,
                         1.0
                     );
                     if (locationPattern) {
@@ -330,7 +331,7 @@ class LocationMatchingService {
     async learnMerchantLocation(userId, merchantName, lat, lng, timestamp = new Date()) {
         try {
             const merchantKey = merchantName.toLowerCase().trim();
-            
+
             const learned = await MerchantLocation.findOne({
                 user: userId,
                 merchantKey

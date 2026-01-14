@@ -22,13 +22,7 @@ const learningPatternSchema = new mongoose.Schema({
     },
 
     // Corrected data provided by user
-    correctedData: {
-        amount: Number,
-        type: String,
-        category: String,
-        merchant: String,
-        description: String
-    },
+    correctedData: mongoose.Schema.Types.Mixed,
 
     // Source information
     source: {
