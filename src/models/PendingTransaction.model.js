@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
+import { locationMatchingService } from '../services/locationMatching.service.js';
 
 const pendingTransactionSchema = new mongoose.Schema({
     user: {
@@ -8,7 +9,7 @@ const pendingTransactionSchema = new mongoose.Schema({
         required: true,
         index: true
     },
-    
+
     // Original parsed data
     parsedData: {
         amount: { type: Number, required: true },
@@ -95,24 +96,24 @@ pendingTransactionSchema.index({ user: 1, status: 1, createdAt: -1 });
 pendingTransactionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 
 // Virtual for formatted amount
-pendingTransactionSchema.virtual('formattedAmount').get(function() {
+pendingTransactionSchema.virtual('formattedAmount').get(function () {
     return `₹${this.parsedData.amount.toFixed(2)}`;
 });
 
 // Method to approve transaction
-pendingTransactionSchema.methods.approve = async function(correctedData = null) {
+pendingTransactionSchema.methods.approve = async function (correctedData = null) {
     const Transaction = mongoose.model('Transaction');
     const MerchantLocation = mongoose.model('MerchantLocation');
     const EmailParsingPattern = mongoose.model('EmailParsingPattern');
-    
+
     // Use corrected data if provided, otherwise use parsed data
     const transactionData = correctedData || this.parsedData;
-    
+
     // If user corrected the data, learn from it
     if (correctedData && this.source.type === 'gmail' && this.source.from) {
         try {
             const senderDomain = this.source.from.match(/@([a-z0-9.-]+\.[a-z]{2,})$/i)?.[1]?.toLowerCase();
-            
+
             await EmailParsingPattern.create({
                 user: this.user,
                 sender: this.source.from.toLowerCase(),
@@ -139,13 +140,13 @@ pendingTransactionSchema.methods.approve = async function(correctedData = null) 
                 timesApplied: 0,
                 successRate: 0
             });
-            
+
             logger.info(`📚 Created learning pattern from user correction`, {
                 sender: this.source.from,
                 originalMerchant: this.parsedData.merchant,
                 correctedMerchant: correctedData.merchant
             });
-            
+
             // Check if this pattern should be promoted to global
             try {
                 const promoted = await EmailParsingPattern.promoteToGlobal(senderDomain, this.source.from);
@@ -162,7 +163,67 @@ pendingTransactionSchema.methods.approve = async function(correctedData = null) 
             logger.error('Error creating learning pattern', { error: err.message });
         }
     }
-    
+
+    // ALSO LEARN MERCHANT PATTERNS (For relaxed categorization)
+    if (correctedData && transactionData.merchant) {
+        try {
+            const MerchantPattern = mongoose.model('MerchantPattern');
+            const merchantKey = transactionData.merchant.toLowerCase().trim();
+            let pattern = await MerchantPattern.findOne({ user: this.user, merchantKey });
+
+            if (!pattern) {
+                pattern = new MerchantPattern({
+                    user: this.user,
+                    merchantKey: merchantKey,
+                    merchantName: transactionData.merchant,
+                    categoryPattern: { history: [] },
+                    paymentMethodPattern: { history: [] }
+                });
+            }
+
+            // Learn Category
+            if (transactionData.category) {
+
+                pattern.learnCategory(this.parsedData.category || 'Uncategorized', transactionData.category);
+            }
+
+            // Learn Payment Method
+            if (transactionData.paymentMethod) {
+                pattern.learnPaymentMethod(this.parsedData.paymentMethod || 'other', transactionData.paymentMethod);
+            }
+
+            pattern.totalTransactions += 1;
+            pattern.totalCorrections += 1; // Since we are in the approve block with correctedData
+
+            await pattern.save();
+            logger.info(`🏪 Learned merchant pattern for ${transactionData.merchant}`);
+
+        } catch (err) {
+            logger.error('Error learning merchant pattern', { error: err.message });
+        }
+    }
+
+    // LEARN LOCATION PATTERNS
+    if (correctedData && correctedData.location) {
+        try {
+            await locationMatchingService.learnFromCorrection({
+                userId: this.user,
+                sender: this.source.from,
+                emailContent: this.source.rawContent,
+                merchantName: transactionData.merchant,
+                originalLocation: this.parsedData.location,
+                correctedLocation: {
+                    coordinates: correctedData.location.coordinates,
+                    // If UI provided these details (Address/City), pass them. 
+                    // Note: EditPendingTransactionScreen might need to send them in correctedData
+                }
+            });
+            logger.info('📍 Leaning location pattern from correction');
+        } catch (err) {
+            logger.error('Error learning location pattern', { error: err.message });
+        }
+    }
+
     // Create actual transaction
     const transaction = await Transaction.create({
         user: this.user,
@@ -194,31 +255,31 @@ pendingTransactionSchema.methods.approve = async function(correctedData = null) 
         correctedData: correctedData,
         feedbackDate: new Date()
     };
-    
+
     await this.save();
-    
+
     return transaction;
 };
 
 // Method to reject transaction
-pendingTransactionSchema.methods.reject = async function(reason = null) {
+pendingTransactionSchema.methods.reject = async function (reason = null) {
     this.status = 'rejected';
     this.userFeedback = {
         approved: false,
         feedbackDate: new Date(),
         notes: reason
     };
-    
+
     await this.save();
 };
 
 // Static method to get pending count for user
-pendingTransactionSchema.statics.getPendingCount = async function(userId) {
+pendingTransactionSchema.statics.getPendingCount = async function (userId) {
     return this.countDocuments({ user: userId, status: 'pending' });
 };
 
 // Static method to expire old pending transactions
-pendingTransactionSchema.statics.expireOldTransactions = async function() {
+pendingTransactionSchema.statics.expireOldTransactions = async function () {
     const result = await this.updateMany(
         {
             status: 'pending',
@@ -228,7 +289,7 @@ pendingTransactionSchema.statics.expireOldTransactions = async function() {
             $set: { status: 'expired' }
         }
     );
-    
+
     return result.modifiedCount;
 };
 

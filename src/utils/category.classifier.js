@@ -6,7 +6,11 @@ const categoryMap = [
   { keywords: ['flipkart', 'amazon', 'myntra'], category: 'Shopping', subCategory: 'E-commerce' },
   { keywords: ['zomato', 'swiggy', 'restaurant'], category: 'Food', subCategory: 'Dining' },
   { keywords: ['rent', 'landlord'], category: 'Housing', subCategory: 'Rent' },
-  { keywords: ['salary', 'payroll', 'credited'], category: 'Income', subCategory: null },
+  { keywords: ['salary', 'payroll', 'stipend', 'wages'], category: 'Salary', subCategory: 'Income' },
+  { keywords: ['refund', 'reversal', 'reversed', 'returned', 'return'], category: 'Refund', subCategory: 'Income' },
+  { keywords: ['dividend', 'interest', 'profit', 'capital gain'], category: 'Investment', subCategory: 'Income' },
+  { keywords: ['gift', 'bonus', 'reward', 'cashback'], category: 'Gift', subCategory: 'Income' },
+  { keywords: ['upi', 'transfer', 'received'], category: 'Transfer', subCategory: 'Income' }, // Generic money in
   // add more rules here
 ];
 

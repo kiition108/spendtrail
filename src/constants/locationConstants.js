@@ -24,7 +24,7 @@ export const LOCATION_CONFIDENCE = {
 /**
  * Time window for background location matching (in minutes)
  */
-export const BACKGROUND_LOCATION_TIME_WINDOW = 15;
+export const BACKGROUND_LOCATION_TIME_WINDOW = 60;
 
 /**
  * Merchant location learning thresholds
